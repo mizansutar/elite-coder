@@ -1,0 +1,66 @@
+.results-page {
+  min-height: 100vh;
+  background: #f4f6f8;
+  padding: 48px 24px;
+  color: #111827;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+.results-container {
+  max-width: 1000px;
+  margin: auto;
+}
+
+.results-title {
+  font-size: 30px;
+  font-weight: 700;
+  margin-bottom: 28px;
+  color: #111827;
+}
+
+.result-card {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 16px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s ease;
+}
+
+.result-card:hover {
+  box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+  transform: translateY(-2px);
+}
+
+.result-name {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.result-meta {
+  font-size: 14px;
+  color: #4b5563;
+  margin: 4px 0;
+}
+
+.result-button {
+  margin-top: 12px;
+  padding: 9px 16px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background: #2563eb;
+  color: white;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.result-button:hover {
+  background: #1d4ed8;
+}
+
+.empty-text {
+  margin-top: 28px;
+  color: #6b7280;
+}
