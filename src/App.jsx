@@ -7,6 +7,7 @@ import CreateExam from "./admin/CreateExam";
 import AddQuestions from "./admin/AddQuestions";
 import AdminExamResults from "./admin/AdminExamResults";
 import AdminStudentResult from "./admin/AdminStudentResult";
+import AdminProtectedRoute from "./admin/AdminProtectedRoute";
 
 // Student pages
 import Register from "./student/Register";
@@ -19,23 +20,60 @@ function App() {
     <BrowserRouter>
       <Routes>
 
-        {/* Admin */}
+        {/* Admin Login (Unprotected) */}
         <Route path="/admin/login" element={<Login />} />
-        <Route path="/admin/dashboard" element={<Dashboard />} />
-        <Route path="/admin/create-exam" element={<CreateExam />} />
-        <Route path="/admin/add-questions" element={<AddQuestions />} />
 
-        {/* Results flow */}
-        <Route path="/admin/exam-results" element={<AdminExamResults />} />
-        <Route path="/admin/student-result/:id" element={<AdminStudentResult />} />
+        {/* Protected Admin Routes */}
+        <Route
+          path="/admin/dashboard"
+          element={
+            <AdminProtectedRoute>
+              <Dashboard />
+            </AdminProtectedRoute>
+          }
+        />
 
-        {/* Student */}
+        <Route
+          path="/admin/create-exam"
+          element={
+            <AdminProtectedRoute>
+              <CreateExam />
+            </AdminProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/add-questions"
+          element={
+            <AdminProtectedRoute>
+              <AddQuestions />
+            </AdminProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/exam-results"
+          element={
+            <AdminProtectedRoute>
+              <AdminExamResults />
+            </AdminProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin/student-result/:id"
+          element={
+            <AdminProtectedRoute>
+              <AdminStudentResult />
+            </AdminProtectedRoute>
+          }
+        />
+
+        {/* Student Routes */}
         <Route path="/exam/:code" element={<Register />} />
         <Route path="/quiz" element={<Quiz />} />
         <Route path="/result" element={<Result />} />
-        
-
-<Route path="/student/all-merit" element={<AllMeritList />} />
+        <Route path="/student/all-merit" element={<AllMeritList />} />
 
       </Routes>
     </BrowserRouter>
