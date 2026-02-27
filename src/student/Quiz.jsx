@@ -20,7 +20,6 @@ export default function Quiz() {
 
   const navigate = useNavigate();
   const location = useLocation();
-
   const { examId, student } = location.state || {};
 
   const [questions, setQuestions] = useState([]);
@@ -38,18 +37,20 @@ export default function Quiz() {
   // ---------- SUBMIT ----------
   const submitExam = async (reason = "Submitted") => {
 
+    if (!attemptId || !examId) return;
     if (submitLockRef.current || submitted || submitting) return;
-    submitLockRef.current = true;
 
+    submitLockRef.current = true;
     setSubmitting(true);
 
     try {
 
       const examSnap = await getDoc(doc(db, "exams", examId));
       const exam = examSnap.data();
+      if (!exam) return;
 
       const setSnap = await getDoc(doc(db, "questionSets", exam.questionSetId));
-      const qs = setSnap.data().questions;
+      const qs = setSnap.data()?.questions || [];
 
       let score = 0;
       qs.forEach((q, i) => {
@@ -57,7 +58,6 @@ export default function Quiz() {
       });
 
       const now = new Date();
-
       const durationSeconds =
         Math.floor((now - startTimeRef.current) / 1000);
 
@@ -68,7 +68,9 @@ export default function Quiz() {
         answers,
         score,
         totalQuestions: qs.length,
-        accuracy: Math.round((score / qs.length) * 100),
+        accuracy: qs.length
+          ? Math.round((score / qs.length) * 100)
+          : 0,
         durationSeconds,
         reason,
         submittedAt: now
@@ -92,9 +94,7 @@ export default function Quiz() {
   // ---------- VIOLATION ----------
   const handleViolation = async (reason) => {
 
-    if (submitLockRef.current || !attemptId) return;
-
-    alert("Leaving exam will submit your attempt");
+    if (submitLockRef.current || !attemptId || submitted) return;
 
     try {
       await updateDoc(doc(db, "attempts", attemptId), {
@@ -116,47 +116,56 @@ export default function Quiz() {
 
     const load = async () => {
 
-      const examSnap = await getDoc(doc(db, "exams", examId));
-      const exam = examSnap.data();
+      try {
 
-      setEndTime(exam.autoEndTime.toDate());
+        const examSnap = await getDoc(doc(db, "exams", examId));
+        const exam = examSnap.data();
+        if (!exam) return;
 
-      const setSnap = await getDoc(doc(db, "questionSets", exam.questionSetId));
-      setQuestions(setSnap.data()?.questions || []);
+        setEndTime(exam.autoEndTime?.toDate());
 
-      const qAttempt = query(
-        collection(db, "attempts"),
-        where("examId", "==", examId),
-        where("email", "==", student.email)
-      );
+        const setSnap = await getDoc(doc(db, "questionSets", exam.questionSetId));
+        setQuestions(setSnap.data()?.questions || []);
 
-      const snap = await getDocs(qAttempt);
+        const qAttempt = query(
+          collection(db, "attempts"),
+          where("examId", "==", examId),
+          where("email", "==", student.email)
+        );
 
-      if (!snap.empty) {
-        const d = snap.docs[0];
-        const data = d.data();
+        const snap = await getDocs(qAttempt);
 
-        setAttemptId(d.id);
-        setAnswers(data.answers || {});
-        startTimeRef.current = data.startedAt?.toDate?.() || new Date();
+        if (!snap.empty) {
+          const d = snap.docs[0];
+          const data = d.data();
+
+          setAttemptId(d.id);
+          setAnswers(data.answers || {});
+          startTimeRef.current =
+            data.startedAt?.toDate?.() || new Date();
+
+          setLoading(false);
+          return;
+        }
+
+        const now = new Date();
+
+        const attemptRef = await addDoc(collection(db, "attempts"), {
+          examId,
+          email: student.email,
+          studentName: student.name,
+          startedAt: now,
+          status: "in-progress",
+          answers: {}
+        });
+
+        startTimeRef.current = now;
+        setAttemptId(attemptRef.id);
         setLoading(false);
-        return;
+
+      } catch (err) {
+        console.error(err);
       }
-
-      const now = new Date();
-
-      const attemptRef = await addDoc(collection(db, "attempts"), {
-        examId,
-        email: student.email,
-        studentName: student.name,
-        startedAt: now,
-        status: "in-progress",
-        answers: {}
-      });
-
-      startTimeRef.current = now;
-      setAttemptId(attemptRef.id);
-      setLoading(false);
     };
 
     load();
@@ -184,23 +193,22 @@ export default function Quiz() {
   // ---------- ADMIN CLOSE ----------
   useEffect(() => {
 
-    if (!examId) return;
+    if (!examId || submitted) return;
 
     const unsub = onSnapshot(doc(db, "exams", examId), snap => {
-      if (snap.data()?.status === "closed") {
+      if (snap.exists() && snap.data()?.status === "closed") {
         handleViolation("Closed by admin");
       }
     });
 
     return () => unsub();
 
-  }, [examId]);
+  }, [examId, submitted]);
 
   // ---------- TAB SWITCH ----------
   useEffect(() => {
 
     const blur = () => handleViolation("Left exam window");
-
     const hidden = () => {
       if (document.hidden) handleViolation("Switched tab");
     };
@@ -213,30 +221,39 @@ export default function Quiz() {
       document.removeEventListener("visibilitychange", hidden);
     };
 
-  }, [attemptId]);
+  }, [attemptId, submitted]);
 
   // ---------- OFFLINE ----------
   useEffect(() => {
-    const offline = () => handleViolation("Network disconnected");
-    window.addEventListener("offline", offline);
-    return () => window.removeEventListener("offline", offline);
-  }, [attemptId]);
 
-  // ---------- AUTOSAVE ----------
+    const offline = () =>
+      handleViolation("Network disconnected");
+
+    window.addEventListener("offline", offline);
+    return () =>
+      window.removeEventListener("offline", offline);
+
+  }, [attemptId, submitted]);
+
+  // ---------- AUTOSAVE (SAFE VERSION) ----------
   useEffect(() => {
 
-    if (!attemptId) return;
+    if (!attemptId || submitted) return;
 
-    const i = setInterval(() => {
-      updateDoc(doc(db, "attempts", attemptId), {
-        answers,
-        lastSaved: new Date()
-      });
-    }, 5000);
+    const timeout = setTimeout(async () => {
+      try {
+        await updateDoc(doc(db, "attempts", attemptId), {
+          answers,
+          lastSaved: new Date()
+        });
+      } catch (err) {
+        console.error("Autosave failed:", err);
+      }
+    }, 1500);
 
-    return () => clearInterval(i);
+    return () => clearTimeout(timeout);
 
-  }, [answers, attemptId]);
+  }, [answers, attemptId, submitted]);
 
   const selectAnswer = (i, opt) =>
     setAnswers(prev => ({ ...prev, [i]: opt }));
@@ -279,7 +296,10 @@ export default function Quiz() {
           </div>
         ))}
 
-        <button disabled={submitting} onClick={() => submitExam()}>
+        <button
+          disabled={submitting || submitted}
+          onClick={() => submitExam()}
+        >
           {submitting ? "Submitting…" : "Submit Exam"}
         </button>
 
