@@ -2,7 +2,15 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import "./Dashboard.css";
 
-import { collection, getDocs, doc, updateDoc, Timestamp } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  updateDoc,
+  Timestamp,
+  onSnapshot,
+  getDocs
+} from "firebase/firestore";
+
 import { db } from "../firebase";
 
 export default function Dashboard() {
@@ -10,11 +18,22 @@ export default function Dashboard() {
   const [exams, setExams] = useState([]);
   const [now, setNow] = useState(Date.now());
 
+  // 🔹 Real-time exam listener (cleaner than manual refetch)
   useEffect(() => {
-    fetchExams();
+
+    const unsub = onSnapshot(collection(db, "exams"), snapshot => {
+      const list = snapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+      setExams(list);
+    });
+
+    return () => unsub();
+
   }, []);
 
-  // tick every second for countdown
+  // 🔹 Timer tick for countdown UI
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(Date.now());
@@ -22,22 +41,17 @@ export default function Dashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  // auto close checker
+  // 🔹 Auto-close checker (every 30 seconds, not 3)
   useEffect(() => {
-    const interval = setInterval(checkAutoClose, 3000);
+    const interval = setInterval(() => {
+      checkAutoClose();
+    }, 30000);
+
     return () => clearInterval(interval);
   }, []);
 
-  const fetchExams = async () => {
-    const snapshot = await getDocs(collection(db, "exams"));
-    const list = snapshot.docs.map(d => ({
-      id: d.id,
-      ...d.data()
-    }));
-    setExams(list);
-  };
-
   const startExam = async (id) => {
+
     const start = new Date();
     const end = new Date(start.getTime() + 30 * 60 * 1000);
 
@@ -46,21 +60,20 @@ export default function Dashboard() {
       startTime: Timestamp.fromDate(start),
       autoEndTime: Timestamp.fromDate(end)
     });
-
-    fetchExams();
   };
 
   const endExam = async (id) => {
     await updateDoc(doc(db, "exams", id), {
       status: "closed"
     });
-    fetchExams();
   };
 
   const checkAutoClose = async () => {
+
     const snapshot = await getDocs(collection(db, "exams"));
 
-    snapshot.docs.forEach(async d => {
+    const updates = snapshot.docs.map(async d => {
+
       const exam = d.data();
 
       if (
@@ -68,16 +81,19 @@ export default function Dashboard() {
         exam.autoEndTime &&
         exam.autoEndTime.toDate() <= new Date()
       ) {
-        await updateDoc(doc(db, "exams", d.id), {
+        return updateDoc(doc(db, "exams", d.id), {
           status: "closed"
         });
       }
+
+      return null;
     });
 
-    fetchExams();
+    await Promise.all(updates);
   };
 
   const formatRemaining = (autoEndTime) => {
+
     if (!autoEndTime) return "";
 
     const diff = autoEndTime.toDate() - now;

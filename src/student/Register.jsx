@@ -22,7 +22,6 @@ export default function Register() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [key, setKey] = useState("");
-
   const [waiting, setWaiting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -37,7 +36,11 @@ export default function Register() {
 
     if (loading) return;
 
-    if (!name.trim() || !email.trim() || !key.trim()) {
+    const cleanName = name.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanKey = key.trim();
+
+    if (!cleanName || !cleanEmail || !cleanKey) {
       setMessage("Please fill all fields");
       return;
     }
@@ -47,14 +50,15 @@ export default function Register() {
       setLoading(true);
       setMessage("Checking exam…");
 
-      const emailLower = email.trim().toLowerCase();
+      const qExam = query(
+        collection(db, "exams"),
+        where("examKey", "==", cleanKey)
+      );
 
-      const qExam = query(collection(db, "exams"), where("examKey", "==", key));
       const examSnap = await getDocs(qExam);
 
       if (examSnap.empty) {
         setMessage("Invalid exam key");
-        setLoading(false);
         return;
       }
 
@@ -64,23 +68,22 @@ export default function Register() {
 
       if (examData.status === "closed") {
         setMessage("Exam is closed");
-        setLoading(false);
         return;
       }
 
-      // prevent duplicate student record
+      // ensure student record exists
       const qStudent = query(
         collection(db, "students"),
         where("examId", "==", examId),
-        where("email", "==", emailLower)
+        where("email", "==", cleanEmail)
       );
 
       const studentSnap = await getDocs(qStudent);
 
       if (studentSnap.empty) {
         await addDoc(collection(db, "students"), {
-          name,
-          email: emailLower,
+          name: cleanName,
+          email: cleanEmail,
           examId,
           joinedAt: new Date()
         });
@@ -89,22 +92,27 @@ export default function Register() {
       setWaiting(true);
       setMessage("Waiting for exam to start…");
 
-      unsubscribeRef.current = onSnapshot(doc(db, "exams", examId), snap => {
+      unsubscribeRef.current = onSnapshot(
+        doc(db, "exams", examId),
+        snap => {
 
-        const exam = snap.data();
+          const exam = snap.data();
 
-        if (exam?.status === "active") {
-          unsubscribeRef.current();
-          navigate("/quiz", {
-            state: { examId, student: { name, email: emailLower } }
-          });
+          if (exam?.status === "active") {
+            unsubscribeRef.current();
+            navigate("/quiz", {
+              state: {
+                examId,
+                student: { name: cleanName, email: cleanEmail }
+              }
+            });
+          }
+
+          if (exam?.status === "closed") {
+            setMessage("Exam closed by administrator");
+          }
         }
-
-        if (exam?.status === "closed") {
-          setMessage("Exam closed by administrator");
-        }
-
-      });
+      );
 
     } catch (err) {
       console.error(err);
@@ -112,13 +120,11 @@ export default function Register() {
     } finally {
       setLoading(false);
     }
-
   };
 
   return (
     <div className="register-page">
       <div className="register-card">
-
         <h2>Exam Registration</h2>
 
         {!waiting && (
@@ -128,13 +134,11 @@ export default function Register() {
               value={name}
               onChange={e => setName(e.target.value)}
             />
-
             <input
               placeholder="Email Address"
               value={email}
               onChange={e => setEmail(e.target.value)}
             />
-
             <input
               placeholder="Exam Key"
               value={key}
@@ -147,17 +151,11 @@ export default function Register() {
           </>
         )}
 
-        {waiting && (
-          <div style={{ marginTop: 20 }}>
-            <p>{message}</p>
-            <p>Please wait…</p>
-          </div>
-        )}
+        {waiting && <p>{message}</p>}
 
         {!waiting && message && (
-          <p style={{ marginTop: 12, color: "red" }}>{message}</p>
+          <p style={{ color: "red" }}>{message}</p>
         )}
-
       </div>
     </div>
   );
